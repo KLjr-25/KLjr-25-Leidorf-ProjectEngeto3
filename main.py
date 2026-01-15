@@ -1,5 +1,5 @@
 """
-main.py: Třetí projekt do Engeto Online Python Akademie Election Scraper
+main.py: Třetí projekt Elections Scraper do Engeto Online Python Akademie
 author: Květoslav Leidorf
 email: k.leidorf@gmail.com
 discord: kvetos_95684
@@ -31,48 +31,73 @@ def get_soup(url: str) -> BeautifulSoup:
 def get_town_links(soup: BeautifulSoup) -> List[Dict[str, str]]:
     """Získá kódy obcí, názvy a jejich unikátní odkazy na detaily."""
     towns = []
-    # Tabulky s daty obcí mají třídu "table"
     tables = soup.find_all("table", {"class": "table"})
     
     for table in tables:
-        rows = table.find_all("tr")[2:]  # Přeskočení hlaviček
+        rows = table.find_all("tr")[2:]
         for row in rows:
             tds = row.find_all("td")
-            if len(tds) < 3 or tds[0].text == "-": 
+            # Pokud je řádek prázdný nebo obsahuje jen "-"
+            if len(tds) < 3 or tds[0].text.strip() == "-": 
                 continue
             
-            code = tds[0].text
-            location = tds[1].text
-            # Odkaz na detail obce
-            link_suffix = tds[0].find("a")["href"]
+            code = tds[0].text.strip()
+            location = tds[1].text.strip()
+            
+            # Oprava skládání odkazu - bereme href z prvního <td>
+            link_tag = tds[0].find("a")
+            if not link_tag:
+                continue
+                
+            link_suffix = link_tag["href"]
             full_link = f"https://www.volby.cz/pls/ps2017nss/{link_suffix}"
             
             towns.append({"code": code, "location": location, "link": full_link})
     return towns
 
-def get_town_data(url: str) -> Dict[str, Any]:
-    """Scrapuje data o hlasování z detailu konkrétní obce."""
+def get_parties_list(url: str) -> List[str]:
+    """Získá seznam všech kandidujících stran z detailu první obce."""
     soup = get_soup(url)
-    data = {}
-    
-    # Základní data o voličích
-    data["registered"] = soup.find("td", {"headers": "sa2"}).text.replace("\xa0", "")
-    data["envelopes"] = soup.find("td", {"headers": "sa3"}).text.replace("\xa0", "")
-    data["valid"] = soup.find("td", {"headers": "sa6"}).text.replace("\xa0", "")
-    
-    # Hlasy pro politické strany (ve dvou tabulkách t1 a t2)
-    for i in [1, 2]:
-        table = soup.find("div", {"id": f"t{i}"})
-        if not table:
-            continue
+    parties = []
+    # Strany jsou v tabulkách s id t1sb2 a t2sb2 (nebo t1 a t2)
+    tables = soup.find_all("table", {"class": "table"})
+    for table in tables:
         rows = table.find_all("tr")[2:]
         for row in rows:
             tds = row.find_all("td")
-            if len(tds) < 3 or tds[1].text == "-":
-                continue
-            party_name = tds[1].text
-            votes = tds[2].text.replace("\xa0", "")
-            data[party_name] = votes
+            if len(tds) >= 2:
+                name = tds[1].text.strip()
+                # Vyfiltrování řádků, které nejsou názvy stran
+                if name and name not in ["-", "Celkem"] and not name.isnumeric():
+                    parties.append(name)
+    return parties
+
+def get_town_data(url: str, all_parties: List[str]) -> Dict[str, Any]:
+    """Scrapuje data o hlasování a mapuje je na kompletní seznam stran."""
+    soup = get_soup(url)
+    data = {}
+    
+    # Základní data (voliči, obálky, platné)
+    data["registered"] = soup.find("td", {"headers": "sa2"}).text.replace("\xa0", "").strip()
+    data["envelopes"] = soup.find("td", {"headers": "sa3"}).text.replace("\xa0", "").strip()
+    data["valid"] = soup.find("td", {"headers": "sa6"}).text.replace("\xa0", "").strip()
+    
+    # Naplnění stran
+    tables = soup.find_all("table", {"class": "table"})
+    # Projdeme všechny tabulky s výsledky stran
+    for table in tables:
+        rows = table.find_all("tr")[2:]
+        for row in rows:
+            tds = row.find_all("td")
+            if len(tds) >= 3:
+                party_name = tds[1].text.strip()
+                if party_name in all_parties:
+                    data[party_name] = tds[2].text.replace("\xa0", "").strip()
+            
+    # Doplnění nul pro strany, které v dané obci neměly hlasy
+    for party in all_parties:
+        if party not in data:
+            data[party] = "0"
             
     return data
 
@@ -85,29 +110,33 @@ def main() -> None:
     main_soup = get_soup(url)
     towns = get_town_links(main_soup)
     
-    results = []
+    if not towns:
+        print("Nebyla nalezena žádná data o obcích. Zkontrolujte URL.")
+        return
+
+    print("ZJIŠŤUJI SEZNAM KANDIDUJÍCÍCH STRAN...")
+    all_parties = get_parties_list(towns[0]["link"])
     
+    results = []
     for index, town in enumerate(towns):
         print(f"ZPRACOVÁVÁM OBEC ({index + 1}/{len(towns)}): {town['location']}")
-        town_info = get_town_data(town["link"])
+        town_results = get_town_data(town["link"], all_parties)
         
-        # Spojení základních info o obci a výsledků hlasování
         full_row = {
             "code": town["code"],
             "location": town["location"],
-            **town_info
+            **town_results
         }
         results.append(full_row)
 
     # Zápis do CSV
     if results:
-        header = results[0].keys()
+        header = ["code", "location", "registered", "envelopes", "valid"] + all_parties
         with open(output_file, mode="w", newline="", encoding="utf-8-sig") as f:
             writer = csv.DictWriter(f, fieldnames=header, delimiter=";")
             writer.writeheader()
             writer.writerows(results)
         print(f"HOTOVO. DATA ULOŽENA DO: {output_file}")
 
-# Spuštění hlavní smyčky programu
 if __name__ == "__main__":
     main()
