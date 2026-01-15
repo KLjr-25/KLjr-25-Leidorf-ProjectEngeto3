@@ -1,14 +1,14 @@
 # Election Scraper
 
-Tento program slouží k automatizovanému sběru dat (scrapování) výsledků parlamentních voleb z roku 2017 z webového portálu [volby.cz](https://www.volby.cz/). Program extrahuje data pro libovolný okres a ukládá je do formátu CSV pro další analýzu.
+Tento program slouží k automatizovanému sběru dat a výsledků parlamentních voleb z roku 2017 z webového portálu [volby.cz](https://www.volby.cz/). Program extrahuje data pro libovolný zvolený okres a ukládá je do formátu CSV pro další zpracování.
 
 ## Popis projektu
 
-Program na základě zadaného URL odkazu (pro konkrétní okres):
-1. Projde hlavní tabulku a identifikuje všechny obce.
-2. Pro každou obec navštíví její detailní stránku.
-3. Vyextrahuje počty registrovaných voličů, vydaných obálek, platných hlasů a počty hlasů pro jednotlivé politické kandidující strany.
-4. Výsledná data uloží do přehledného souboru `.csv`.
+Program na základě zadané URL adresy:
+1. Identifikuje všechny obce v rámci daného územního celku.
+2. Pro každou obec navštíví její detailní stránku a stáhne výsledky (voliče, obálky, platné hlasy).
+3. Vyextrahuje počty hlasů pro jednotlivé kandidující politické strany.
+4. Všechna získaná data sjednotí a uloží do souboru `.csv`.
 
 ## Požadavky
 
@@ -16,24 +16,43 @@ Projekt vyžaduje Python verze 3 a externí knihovny specifikované v souboru `r
 
 ### Instalace potřebných knihoven
 
-Před prvním spuštěním nainstaluj závislosti. V **PowerShellu** (pwsh) nebo jiném terminálu spusť příkaz:
+Před prvním spuštěním nainstalujte závislosti. V PowerShellu (pwsh) nebo jiném terminálu spusťte:
 
 ```powershell
 pip install -r requirements.txt
+```
 
 ## Spuštění programu
 
-Program se spouští z příkazové řádky (PowerShell, Terminál) a vyžaduje dva argumenty zadané v následujícím pořadí:
+Program se spouští z příkazové řádky a vyžaduje dva povinné argumenty v tomto pořadí:
 
-# Obecný formát:
+1. **URL** – odkaz na výsledky konkrétního územního celku (vždy v uvozovkách).
+2. **Soubor** – název výstupního souboru s příponou `.csv`.
 
-python main.py <URL_ADRESA> <NAZEV_SOUBORU>
-
-### Příklad spuštění
-
-V **PowerShellu** spusťte program takto (nezapomeňte na uvozovky u URL):
+**Obecný formát spuštění:**
 
 ```powershell
-# Konkrétní příklad pro okres Prostějov:
+python main.py <URL_ADRESA> <NAZEV_SOUBORU>
+```
 
-python main.py "https://www.volby.cz/pls/ps2017nss/ps311?xjazyk=CZ&xkraj=12&xnumnuts=7103" "vysledky_prostejov.csv"
+### Příklad spuštění (pro okres Prostějov)
+
+V PowerShellu zadejte příkaz následovně:
+
+```powershell
+python main.py "[https://www.volby.cz/pls/ps2017nss/ps311?xjazyk=CZ&xkraj=12&xnumnuts=7103](https://www.volby.cz/pls/ps2017nss/ps311?xjazyk=CZ&xkraj=12&xnumnuts=7103)" "vysledky_prostejov.csv"
+```
+
+## Struktura výstupního CSV
+
+Výsledný soubor používá jako oddělovač středník (`;`) a kódování `utf-8-sig`, aby byl okamžitě čitelný v aplikaci Excel. Sloupce obsahují:
+
+- **code**: Identifikační kód obce.
+- **location**: Název obce.
+- **registered**: Počet registrovaných voličů.
+- **envelopes**: Počet vydaných úředních obálek.
+- **valid**: Počet odevzdaných platných hlasů.
+- **[Názvy stran]**: Každá kandidující strana má svůj vlastní sloupec s počtem získaných hlasů.
+
+---
+**Autor:** Květoslav Leidorf
