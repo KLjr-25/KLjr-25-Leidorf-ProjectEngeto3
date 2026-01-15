@@ -20,3 +20,19 @@ Před prvním spuštěním nainstaluj závislosti. V **PowerShellu** (pwsh) nebo
 
 ```powershell
 pip install -r requirements.txt
+
+## Spuštění programu
+
+Program se spouští z příkazové řádky (PowerShell, Terminál) a vyžaduje dva argumenty zadané v následujícím pořadí:
+
+| Argument | Popis | Příklad |
+| :--- | :--- | :--- |
+| **URL** | Odkaz na výsledky konkrétního územního celku | `"https://www.volby.cz/..."` |
+| **Soubor** | Název výsledného souboru s příponou .csv | `"vysledky_prostejov.csv"` |
+
+### Příklad spuštění
+
+V **PowerShellu** spusťte program takto (nezapomeňte na uvozovky u URL):
+
+```powershell
+python main.py "[https://www.volby.cz/pls/ps2017nss/ps311?xjazyk=CZ&xkraj=12&xnumnuts=7103](https://www.volby.cz/pls/ps2017nss/ps311?xjazyk=CZ&xkraj=12&xnumnuts=7103)" "vysledky_prostejov.csv"
