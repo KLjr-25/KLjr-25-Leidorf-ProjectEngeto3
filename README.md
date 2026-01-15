@@ -25,14 +25,15 @@ pip install -r requirements.txt
 
 Program se spouští z příkazové řádky (PowerShell, Terminál) a vyžaduje dva argumenty zadané v následujícím pořadí:
 
-| Argument | Popis | Příklad |
-| :--- | :--- | :--- |
-| **URL** | Odkaz na výsledky konkrétního územního celku | `"https://www.volby.cz/..."` |
-| **Soubor** | Název výsledného souboru s příponou .csv | `"vysledky_prostejov.csv"` |
+# Obecný formát:
+
+python main.py <URL_ADRESA> <NAZEV_SOUBORU>
 
 ### Příklad spuštění
 
 V **PowerShellu** spusťte program takto (nezapomeňte na uvozovky u URL):
 
 ```powershell
-python main.py "[https://www.volby.cz/pls/ps2017nss/ps311?xjazyk=CZ&xkraj=12&xnumnuts=7103](https://www.volby.cz/pls/ps2017nss/ps311?xjazyk=CZ&xkraj=12&xnumnuts=7103)" "vysledky_prostejov.csv"
+# Konkrétní příklad pro okres Prostějov:
+
+python main.py "https://www.volby.cz/pls/ps2017nss/ps311?xjazyk=CZ&xkraj=12&xnumnuts=7103" "vysledky_prostejov.csv"
