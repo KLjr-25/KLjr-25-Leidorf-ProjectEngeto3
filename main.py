@@ -11,6 +11,10 @@ import requests
 from bs4 import BeautifulSoup
 from typing import List, Dict, Any
 
+# Konstanta pro základní URL, aby se zabránilo hardkódování uvnitř funkcí
+BASE_URL = "https://www.volby.cz/pls/ps2017nss/"
+
+
 def check_arguments() -> None:
     """Kontrola, zda byly zadány oba argumenty příkazové řádky."""
     if len(sys.argv) != 3:
@@ -18,8 +22,9 @@ def check_arguments() -> None:
         print("Example: python main.py \"URL_ADDRESS\" \"vysledky.csv\"")
         sys.exit(1)
 
+
 def get_soup(url: str) -> BeautifulSoup:
-    """Stáhne HTML obsah a vrátí BeautifulSoup objekt."""
+    """Stáhne HTML obsah a vrátí BeautifulSoup objekt s ošetřením chyb."""
     try:
         response = requests.get(url)
         response.raise_for_status()
@@ -28,63 +33,86 @@ def get_soup(url: str) -> BeautifulSoup:
         print(f"Error fetching data from URL: {e}")
         sys.exit(1)
 
+
 def get_town_links(soup: BeautifulSoup) -> List[Dict[str, str]]:
-    """Získá kódy obcí, názvy a jejich unikátní odkazy na detaily."""
+    """
+    Získá kódy obcí, názvy a jejich unikátní odkazy.
+    Index [2:] přeskakuje první dva řádky tabulek (záhlaví a prázdné oddělovače).
+    Funkce předpokládá specifickou strukturu tabulek na volby.cz.
+    """
     towns = []
     tables = soup.find_all("table", {"class": "table"})
     
     for table in tables:
+        # Přeskakujeme první 2 řádky (th záhlaví), které neobsahují data obcí
         rows = table.find_all("tr")[2:]
         for row in rows:
             tds = row.find_all("td")
-            # Pokud je řádek prázdný nebo obsahuje jen "-"
+            
+            # Ošetření prázdných řádků nebo řádků bez dat
             if len(tds) < 3 or tds[0].text.strip() == "-": 
                 continue
             
             code = tds[0].text.strip()
             location = tds[1].text.strip()
             
-            # Oprava skládání odkazu - bereme href z prvního <td>
             link_tag = tds[0].find("a")
             if not link_tag:
                 continue
                 
-            link_suffix = link_tag["href"]
-            full_link = f"https://www.volby.cz/pls/ps2017nss/{link_suffix}"
+            # Skládání plné URL z relativního odkazu href
+            full_link = f"{BASE_URL}{link_tag['href']}"
             
-            towns.append({"code": code, "location": location, "link": full_link})
+            towns.append({
+                "code": code, 
+                "location": location, 
+                "link": full_link
+            })
+            
     return towns
 
+
 def get_parties_list(url: str) -> List[str]:
-    """Získá seznam všech kandidujících stran z detailu první obce."""
+    """
+    Získá seznam všech kandidujících stran z detailu obce.
+    Spoléhá na to, že struktura tabulek pro strany je na webu konzistentní.
+    """
     soup = get_soup(url)
     parties = []
-    # Strany jsou v tabulkách s id t1sb2 a t2sb2 (nebo t1 a t2)
     tables = soup.find_all("table", {"class": "table"})
+    
     for table in tables:
+        # Index [2:] opět přeskakuje záhlaví tabulky stran
         rows = table.find_all("tr")[2:]
         for row in rows:
             tds = row.find_all("td")
             if len(tds) >= 2:
                 name = tds[1].text.strip()
-                # Vyfiltrování řádků, které nejsou názvy stran
+                # Filtrujeme pouze reálné názvy stran (ne součty nebo pomlčky)
                 if name and name not in ["-", "Celkem"] and not name.isnumeric():
                     parties.append(name)
+                    
     return parties
 
+
 def get_town_data(url: str, all_parties: List[str]) -> Dict[str, Any]:
-    """Scrapuje data o hlasování a mapuje je na kompletní seznam stran."""
+    """
+    Scrapuje data o hlasování v konkrétní obci.
+    Využívá specifické 'headers' atributy (sa2, sa3, sa6) pro přesné zacílení dat.
+    """
     soup = get_soup(url)
     data = {}
     
-    # Základní data (voliči, obálky, platné)
-    data["registered"] = soup.find("td", {"headers": "sa2"}).text.replace("\xa0", "").strip()
-    data["envelopes"] = soup.find("td", {"headers": "sa3"}).text.replace("\xa0", "").strip()
-    data["valid"] = soup.find("td", {"headers": "sa6"}).text.replace("\xa0", "").strip()
+    # Atributy 'headers' jsou specifické pro tento web a mohou se při změně webu změnit
+    try:
+        data["registered"] = soup.find("td", {"headers": "sa2"}).text.replace("\xa0", "").strip()
+        data["envelopes"] = soup.find("td", {"headers": "sa3"}).text.replace("\xa0", "").strip()
+        data["valid"] = soup.find("td", {"headers": "sa6"}).text.replace("\xa0", "").strip()
+    except AttributeError:
+        print(f"Varování: Nepodařilo se najít základní data na {url}. Struktura HTML se mohla změnit.")
     
-    # Naplnění stran
+    # Mapování hlasů pro jednotlivé strany
     tables = soup.find_all("table", {"class": "table"})
-    # Projdeme všechny tabulky s výsledky stran
     for table in tables:
         rows = table.find_all("tr")[2:]
         for row in rows:
@@ -93,15 +121,35 @@ def get_town_data(url: str, all_parties: List[str]) -> Dict[str, Any]:
                 party_name = tds[1].text.strip()
                 if party_name in all_parties:
                     data[party_name] = tds[2].text.replace("\xa0", "").strip()
-            
-    # Doplnění nul pro strany, které v dané obci neměly hlasy
+    
+    # Ošetření stran s nulovým ziskem v dané obci
     for party in all_parties:
         if party not in data:
             data[party] = "0"
             
     return data
 
+
+def save_to_csv(results: List[Dict], all_parties: List[str], filename: str) -> None:
+    """Samostatná funkce pro zápis výsledků do CSV souboru."""
+    if not results:
+        print("Žádná data k zápisu.")
+        return
+
+    header = ["code", "location", "registered", "envelopes", "valid"] + all_parties
+    
+    try:
+        with open(filename, mode="w", newline="", encoding="utf-8-sig") as f:
+            writer = csv.DictWriter(f, fieldnames=header, delimiter=";")
+            writer.writeheader()
+            writer.writerows(results)
+        print(f"HOTOVO. DATA ULOŽENA DO: {filename}")
+    except IOError as e:
+        print(f"Chyba při zápisu do souboru: {e}")
+
+
 def main() -> None:
+    """Hlavní řídicí funkce scraperu."""
     check_arguments()
     url = sys.argv[1]
     output_file = sys.argv[2]
@@ -114,12 +162,13 @@ def main() -> None:
         print("Nebyla nalezena žádná data o obcích. Zkontrolujte URL.")
         return
 
+    # Předpokládáme, že první obec obsahuje kompletní seznam stran pro daný územní celek
     print("ZJIŠŤUJI SEZNAM KANDIDUJÍCÍCH STRAN...")
     all_parties = get_parties_list(towns[0]["link"])
     
     results = []
-    for index, town in enumerate(towns):
-        print(f"ZPRACOVÁVÁM OBEC ({index + 1}/{len(towns)}): {town['location']}")
+    for index, town in enumerate(towns, start=1):
+        print(f"ZPRACOVÁVÁM OBEC ({index}/{len(towns)}): {town['location']}")
         town_results = get_town_data(town["link"], all_parties)
         
         full_row = {
@@ -129,14 +178,8 @@ def main() -> None:
         }
         results.append(full_row)
 
-    # Zápis do CSV
-    if results:
-        header = ["code", "location", "registered", "envelopes", "valid"] + all_parties
-        with open(output_file, mode="w", newline="", encoding="utf-8-sig") as f:
-            writer = csv.DictWriter(f, fieldnames=header, delimiter=";")
-            writer.writeheader()
-            writer.writerows(results)
-        print(f"HOTOVO. DATA ULOŽENA DO: {output_file}")
+    save_to_csv(results, all_parties, output_file)
+
 
 if __name__ == "__main__":
     main()
